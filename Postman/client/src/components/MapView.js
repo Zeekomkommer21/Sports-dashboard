@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, Polyline, Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import polyline from '@mapbox/polyline';
 import 'leaflet-draw';
 import styled from 'styled-components';
+import { snapActivityToRoads, fetchOSMRoads } from '../utils/roadSnapping';
 
 // Test polyline decoding
 const testPolyline = () => {
@@ -74,6 +75,89 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+
+// Road snapping component
+function RoadSnappingLayer({ activities, onRoadsLoaded }) {
+  const [roads, setRoads] = useState([]);
+  const [snappedActivities, setSnappedActivities] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadRoadsAndSnap = useCallback(async () => {
+    if (!activities || activities.length === 0) return;
+
+    setIsLoading(true);
+    try {
+      // Get bounds from activities
+      const bounds = getActivitiesBounds(activities);
+      console.log('Loading roads for bounds:', bounds);
+
+      // Fetch OSM roads
+      const osmRoads = await fetchOSMRoads(bounds);
+      console.log('Loaded OSM roads:', osmRoads.length);
+      setRoads(osmRoads);
+
+      // Snap activities to roads
+      const snapped = [];
+      for (const activity of activities) {
+        const snappedActivity = await snapActivityToRoads(activity, osmRoads);
+        snapped.push(snappedActivity);
+      }
+      
+      setSnappedActivities(snapped);
+      console.log('Snapped activities:', snapped.length);
+      
+      if (onRoadsLoaded) {
+        onRoadsLoaded(osmRoads, snapped);
+      }
+    } catch (error) {
+      console.error('Error in road snapping:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activities, onRoadsLoaded]);
+
+  useEffect(() => {
+    loadRoadsAndSnap();
+  }, [loadRoadsAndSnap]);
+
+  // Render snapped activities
+  return (
+    <>
+      {snappedActivities.map((activity, index) => {
+        if (!activity.snappedCoordinates || activity.snappedCoordinates.length < 2) {
+          return null;
+        }
+
+        return (
+          <Polyline
+            key={`snapped-${activity.id}`}
+            positions={activity.snappedCoordinates}
+            color="#FF6B35"
+            weight={3}
+            opacity={0.8}
+            dashArray="5, 5"
+          />
+        );
+      })}
+      
+      {/* Show loading indicator */}
+      {isLoading && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(255, 255, 255, 0.9)',
+          padding: '1rem',
+          borderRadius: '8px',
+          zIndex: 1000
+        }}>
+          Snapping roads...
+        </div>
+      )}
+    </>
+  );
+}
 
 const MapWrapper = styled.div`
   height: 100%;
@@ -418,6 +502,7 @@ const MapView = ({
     }
   }, [stravaActivities]);
   const [pointMode, setPointMode] = useState(null);
+  const [showSnappedRoads, setShowSnappedRoads] = useState(true);
 
   const handleSetStartPoint = () => {
     setPointMode('start');
@@ -454,71 +539,18 @@ const MapView = ({
           onPointSelect={onPointSelect}
         />
 
-        {/* Strava Activities */}
-        {stravaActivities.map((activity, index) => {
-          console.log('Rendering activity:', activity.id, activity.name);
-          
-          // Try to get polyline coordinates - prioritize full polyline, then summary_polyline
-          let coordinates = null;
-          let polylineSource = null;
-          
-          if (activity.map?.polyline) {
-            try {
-              console.log(`Activity ${activity.id} using full polyline data`);
-              coordinates = decodeStravaPolyline(activity.map.polyline);
-              polylineSource = 'polyline';
-            } catch (error) {
-              console.error('Error parsing full polyline:', error);
-            }
-          } else if (activity.map?.summary_polyline) {
-            try {
-              console.log(`Activity ${activity.id} using summary polyline data`);
-              coordinates = decodeStravaPolyline(activity.map.summary_polyline);
-              polylineSource = 'summary_polyline';
-            } catch (error) {
-              console.error('Error parsing summary polyline:', error);
-            }
-          }
-          
-          // Render polyline if we have coordinates
-          if (coordinates && coordinates.length > 1) {
-            console.log(`Activity ${activity.id}: Rendering ${coordinates.length} coordinates from ${polylineSource}`);
-            console.log(`Activity ${activity.id} first few coordinates:`, coordinates.slice(0, 3));
-            
-            return (
-              <Polyline
-                key={`strava-${activity.id}`}
-                positions={coordinates}
-                color={polylineSource === 'polyline' ? "#fc4c02" : "#FF8C42"}
-                weight={polylineSource === 'polyline' ? 4 : 3}
-                opacity={polylineSource === 'polyline' ? 0.8 : 0.7}
-                dashArray={polylineSource === 'summary_polyline' ? "3, 3" : undefined}
-              />
-            );
-          }
-          
-          // Check for start/end coordinates (fallback - shows straight line)
-          if (activity.start_latlng && activity.end_latlng && 
-              activity.start_latlng.length === 2 && activity.end_latlng.length === 2) {
-            console.log(`Activity ${activity.id} using start/end coordinates (no polyline available)`);
-            return (
-              <Polyline
-                key={`strava-${activity.id}`}
-                positions={[
-                  [activity.start_latlng[0], activity.start_latlng[1]],
-                  [activity.end_latlng[0], activity.end_latlng[1]]
-                ]}
-                color="#ff6b35"
-                weight={2}
-                opacity={0.6}
-                dashArray="5, 5"
-              />
-            );
-          }
-          
-          console.log('Activity has no GPS data:', activity.id);
-          return null;
-        })}
+        {/* Road Snapping Layer - Snaps Strava activities to OSM roads */}
+        {showSnappedRoads && (
+          <RoadSnappingLayer 
+            activities={stravaActivities}
+            onRoadsLoaded={(roads, snappedActivities) => {
+              console.log('Roads loaded and activities snapped:', {
+                roadsCount: roads.length,
+                snappedCount: snappedActivities.length
+              });
+            }}
+          />
+        )}
 
         {/* Selected Polygon */}
         {selectedPolygon && (
@@ -574,8 +606,8 @@ const MapView = ({
           <Legend>
             <strong>Map Legend:</strong>
             <LegendItem>
-              <LegendColor color="#fc4c02" />
-              <span>Your Strava Activities</span>
+              <LegendColor color="#FF6B35" />
+              <span>Snapped Roads (Strava → OSM)</span>
             </LegendItem>
             <LegendItem>
               <LegendColor color="#4caf50" />
@@ -603,6 +635,16 @@ const MapView = ({
             }}
           >
             Debug Activities
+          </ControlButton>
+        </ControlSection>
+
+        <ControlSection>
+          <ControlTitle>Road Snapping</ControlTitle>
+          <ControlButton
+            $active={showSnappedRoads}
+            onClick={() => setShowSnappedRoads(!showSnappedRoads)}
+          >
+            {showSnappedRoads ? 'Hide' : 'Show'} Snapped Roads
           </ControlButton>
         </ControlSection>
 

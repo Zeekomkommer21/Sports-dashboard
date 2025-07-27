@@ -522,8 +522,6 @@ function App() {
           
           <SidebarContainer $isOpen={sidebarOpen}>
             <Sidebar
-              stravaToken={stravaToken}
-              stravaActivities={stravaActivities}
               selectedPolygon={selectedPolygon}
               startPoint={startPoint}
               endPoint={endPoint}
@@ -537,7 +535,6 @@ function App() {
                 setStartPoint(null);
                 setEndPoint(null);
               }}
-              onRefreshActivities={handleRefreshActivities}
             />
           </SidebarContainer>
         </MainContent>

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
-import { FaRoute, FaDownload, FaTrash, FaInfoCircle, FaStrava, FaSync } from 'react-icons/fa';
+import { FaRoute, FaDownload, FaTrash, FaInfoCircle } from 'react-icons/fa';
 
 const SidebarContainer = styled.div`
   padding: 1.5rem;
@@ -103,39 +103,6 @@ const InfoValue = styled.span`
   color: #333;
 `;
 
-const ActivityList = styled.div`
-  max-height: 300px;
-  overflow-y: auto;
-`;
-
-const ActivityItem = styled.div`
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    border-color: #667eea;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
-  }
-`;
-
-const ActivityTitle = styled.div`
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 0.25rem;
-`;
-
-const ActivityDetails = styled.div`
-  font-size: 0.8rem;
-  color: #666;
-  display: flex;
-  gap: 1rem;
-`;
-
 const LoadingSpinner = styled.div`
   display: inline-block;
   width: 16px;
@@ -150,26 +117,7 @@ const LoadingSpinner = styled.div`
   }
 `;
 
-const formatDistance = (meters) => {
-  if (meters < 1000) {
-    return `${Math.round(meters)}m`;
-  }
-  return `${(meters / 1000).toFixed(1)}km`;
-};
-
-const formatDuration = (seconds) => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m`;
-};
-
 const Sidebar = ({
-  stravaToken,
-  stravaActivities,
   selectedPolygon,
   startPoint,
   endPoint,
@@ -177,11 +125,8 @@ const Sidebar = ({
   isLoading,
   onOptimize,
   onDownloadGPX,
-  onClearRoute,
-  onRefreshActivities
+  onClearRoute
 }) => {
-  const [showActivities, setShowActivities] = useState(false);
-
   const getStatus = () => {
     if (!selectedPolygon) {
       return { status: 'warning', message: 'Draw a polygon to define your area' };
@@ -263,53 +208,6 @@ const Sidebar = ({
 
       <Section>
         <SectionTitle>
-          <FaStrava />
-          Strava Activities ({stravaActivities.length})
-        </SectionTitle>
-        
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-          <Button
-            onClick={() => setShowActivities(!showActivities)}
-            style={{ flex: 1 }}
-          >
-            {showActivities ? 'Hide' : 'Show'} Activities
-          </Button>
-          
-          {stravaToken && (
-            <Button
-              onClick={onRefreshActivities}
-              disabled={isLoading}
-              style={{ flex: 0, padding: '0.75rem' }}
-              title="Refresh activities from Strava"
-            >
-              <FaSync />
-            </Button>
-          )}
-        </div>
-
-        {showActivities && (
-          <ActivityList>
-            {stravaActivities.slice(0, 10).map((activity) => (
-              <ActivityItem key={activity.id}>
-                <ActivityTitle>{activity.name}</ActivityTitle>
-                <ActivityDetails>
-                  <span>{formatDistance(activity.distance)}</span>
-                  <span>{formatDuration(activity.moving_time)}</span>
-                  <span>{new Date(activity.start_date).toLocaleDateString()}</span>
-                </ActivityDetails>
-              </ActivityItem>
-            ))}
-            {stravaActivities.length === 0 && (
-              <div style={{ textAlign: 'center', color: '#666', padding: '1rem' }}>
-                No activities found
-              </div>
-            )}
-          </ActivityList>
-        )}
-      </Section>
-
-      <Section>
-        <SectionTitle>
           <FaInfoCircle />
           About
         </SectionTitle>
@@ -330,6 +228,13 @@ const Sidebar = ({
       </Section>
     </SidebarContainer>
   );
+};
+
+const formatDistance = (meters) => {
+  if (meters < 1000) {
+    return `${Math.round(meters)}m`;
+  }
+  return `${(meters / 1000).toFixed(1)}km`;
 };
 
 export default Sidebar; 
